@@ -1,488 +1,335 @@
 <!DOCTYPE html>
 <html lang="zh-CN">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>实时天气</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <link href="https://cdn.jsdelivr.net/npm/font-awesome@4.7.0/css/font-awesome.min.css" rel="stylesheet">
-    <style>
-        body {
-            background-size: cover;
-            background-position: center;
-            background-repeat: no-repeat;
-            transition: background-image 1s ease-in-out;
-            min-height: 100vh;
-        }
-        .weather-card {
-            backdrop-filter: blur(10px);
-            transition: transform 0.3s ease, box-shadow 0.3s ease;
-        }
-        .weather-card:hover {
-            transform: translateY(-5px);
-            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.2);
-        }
-        .hourly-card {
-            transition: transform 0.3s ease;
-        }
-        .hourly-card:hover {
-            transform: scale(1.05);
-        }
-        @keyframes fadeIn {
-            from { opacity: 0; transform: translateY(20px); }
-            to { opacity: 1; transform: translateY(0); }
-        }
-        .fade-in {
-            animation: fadeIn 0.8s ease forwards;
-        }
-        .loading-spinner {
-            border-top-color: #3b82f6;
-            animation: spin 1s linear infinite;
-        }
-        @keyframes spin {
-            to { transform: rotate(360deg); }
-        }
-    </style>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>动态彩云天气</title>
+<style>
+    html, body {
+        margin: 0;
+        padding: 0;
+        height: 100%;
+        overflow-x: hidden;
+        font-family: "Segoe UI", sans-serif;
+        color: #333;
+    }
+    body {
+        position: relative;
+    }
+    canvas {
+        position: fixed;
+        top: 0;
+        left: 0;
+        z-index: -1;
+    }
+    .container {
+        max-width: 900px;
+        margin: auto;
+        padding: 20px;
+    }
+    .card {
+        background: rgba(255, 255, 255, 0.85);
+        border-radius: 15px;
+        padding: 20px;
+        margin-bottom: 20px;
+        box-shadow: 0 8px 20px rgba(0,0,0,0.1);
+    }
+    .title {
+        font-size: 1.5em;
+        font-weight: bold;
+        margin-bottom: 10px;
+    }
+    .weather-main {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+    }
+    .weather-temp {
+        font-size: 2.5em;
+        font-weight: bold;
+    }
+    .forecast {
+        display: flex;
+        overflow-x: auto;
+        gap: 10px;
+    }
+    .forecast-item {
+        flex: 0 0 auto;
+        background: rgba(255, 255, 255, 0.9);
+        border-radius: 10px;
+        padding: 10px;
+        text-align: center;
+        width: 100px;
+        box-shadow: 0 4px 10px rgba(0,0,0,0.05);
+    }
+</style>
 </head>
-<body class="bg-gray-100 font-sans">
-    <div class="container mx-auto px-4 py-8 max-w-6xl">
-        <!-- 头部信息 -->
-        <header class="text-center mb-8 fade-in">
-            <h1 class="text-4xl font-bold text-white drop-shadow-lg mb-2">实时天气</h1>
-            <p id="location" class="text-xl text-white drop-shadow-md">正在获取位置信息...</p>
-        </header>
+<body>
+<canvas id="weatherCanvas"></canvas>
 
-        <!-- 加载状态 -->
-        <div id="loading" class="flex flex-col items-center justify-center min-h-[300px]">
-            <div class="loading-spinner w-16 h-16 border-4 border-gray-200 rounded-full mb-4"></div>
-            <p class="text-xl text-gray-600">正在加载天气数据...</p>
-        </div>
-
-        <!-- 天气信息主卡片 -->
-        <div id="weather-container" class="hidden">
-            <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
-                <!-- 实时天气卡片 -->
-                <div class="weather-card bg-white/70 rounded-2xl p-6 shadow-lg col-span-1 md:col-span-1 fade-in" style="animation-delay: 0.2s">
-                    <div class="flex justify-between items-start">
-                        <div>
-                            <h2 class="text-2xl font-bold text-gray-800">当前天气</h2>
-                            <p id="current-time" class="text-gray-500"></p>
-                        </div>
-                        <div class="text-right">
-                            <span id="temperature" class="text-5xl font-bold text-gray-800"></span>
-                            <span class="text-2xl text-gray-600">°C</span>
-                        </div>
-                    </div>
-                    <div class="flex items-center mt-4">
-                        <i id="weather-icon" class="fa text-5xl mr-4"></i>
-                        <div>
-                            <p id="weather-desc" class="text-xl font-semibold text-gray-700"></p>
-                            <p id="apparent-temp" class="text-gray-600"></p>
-                        </div>
-                    </div>
-                    <div class="grid grid-cols-2 gap-4 mt-6">
-                        <div class="bg-white/60 rounded-lg p-3 flex items-center">
-                            <i class="fa fa-tint text-blue-500 text-xl mr-2"></i>
-                            <div>
-                                <p class="text-sm text-gray-500">湿度</p>
-                                <p id="humidity" class="text-lg font-medium text-gray-700"></p>
-                            </div>
-                        </div>
-                        <div class="bg-white/60 rounded-lg p-3 flex items-center">
-                            <i class="fa fa-location-arrow text-green-500 text-xl mr-2"></i>
-                            <div>
-                                <p class="text-sm text-gray-500">风向风速</p>
-                                <p id="wind" class="text-lg font-medium text-gray-700"></p>
-                            </div>
-                        </div>
-                        <div class="bg-white/60 rounded-lg p-3 flex items-center">
-                            <i class="fa fa-eye text-yellow-500 text-xl mr-2"></i>
-                            <div>
-                                <p class="text-sm text-gray-500">能见度</p>
-                                <p id="visibility" class="text-lg font-medium text-gray-700"></p>
-                            </div>
-                        </div>
-                        <div class="bg-white/60 rounded-lg p-3 flex items-center">
-                            <i class="fa fa-leaf text-purple-500 text-xl mr-2"></i>
-                            <div>
-                                <p class="text-sm text-gray-500">空气质量</p>
-                                <p id="air-quality" class="text-lg font-medium text-gray-700"></p>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- 天气详情卡片 -->
-                <div class="weather-card bg-white/70 rounded-2xl p-6 shadow-lg col-span-1 md:col-span-1 fade-in" style="animation-delay: 0.4s">
-                    <h2 class="text-2xl font-bold text-gray-800 mb-4">天气详情</h2>
-                    <div class="space-y-4">
-                        <div class="flex justify-between items-center bg-white/60 rounded-lg p-3">
-                            <span class="text-gray-700">气压</span>
-                            <span id="pressure" class="font-medium"></span>
-                        </div>
-                        <div class="flex justify-between items-center bg-white/60 rounded-lg p-3">
-                            <span class="text-gray-700">降水概率</span>
-                            <span id="precipitation" class="font-medium"></span>
-                        </div>
-                        <div class="flex justify-between items-center bg-white/60 rounded-lg p-3">
-                            <span class="text-gray-700">紫外线指数</span>
-                            <span id="uv-index" class="font-medium"></span>
-                        </div>
-                        <div class="flex justify-between items-center bg-white/60 rounded-lg p-3">
-                            <span class="text-gray-700">舒适度指数</span>
-                            <span id="comfort-index" class="font-medium"></span>
-                        </div>
-                        <div class="flex justify-between items-center bg-white/60 rounded-lg p-3">
-                            <span class="text-gray-700">云覆盖率</span>
-                            <span id="cloudrate" class="font-medium"></span>
-                        </div>
-                    </div>
-                </div>
+<div class="container">
+    <div class="card" id="location-card">
+        <div class="title">当前位置</div>
+        <div id="location">正在获取定位...</div>
+        <div style="margin-top: 15px;">
+            <div style="display: flex; gap: 10px; align-items: center;">
+                <input type="text" id="city-input" placeholder="请输入城市名称" style="padding: 8px; flex: 1; border: 1px solid #ddd; border-radius: 5px;">
+                <button id="search-city" style="padding: 8px 15px; background: #4facfe; color: white; border: none; border-radius: 5px;">查询</button>
             </div>
-
-            <!-- 小时预报 -->
-            <div class="weather-card bg-white/70 rounded-2xl p-6 shadow-lg mb-8 fade-in" style="animation-delay: 0.6s">
-                <h2 class="text-2xl font-bold text-gray-800 mb-4">小时预报</h2>
-                <div class="overflow-x-auto pb-4">
-                    <div id="hourly-forecast" class="flex space-x-4 min-w-max"></div>
-                </div>
-            </div>
-
-            <!-- 每日预报 -->
-            <div class="weather-card bg-white/70 rounded-2xl p-6 shadow-lg fade-in" style="animation-delay: 0.8s">
-                <h2 class="text-2xl font-bold text-gray-800 mb-4">每日预报</h2>
-                <div id="daily-forecast" class="grid grid-cols-1 sm:grid-cols-3 gap-4"></div>
-            </div>
+            <p id="city-error" style="color: red; margin-top: 5px; font-size: 14px; display: none;"></p>
         </div>
     </div>
 
-    <script>
-        // DOM 元素
-        const locationElement = document.getElementById('location');
-        const loadingElement = document.getElementById('loading');
-        const weatherContainer = document.getElementById('weather-container');
-        const currentTimeElement = document.getElementById('current-time');
-        const temperatureElement = document.getElementById('temperature');
-        const weatherIconElement = document.getElementById('weather-icon');
-        const weatherDescElement = document.getElementById('weather-desc');
-        const apparentTempElement = document.getElementById('apparent-temp');
-        const humidityElement = document.getElementById('humidity');
-        const windElement = document.getElementById('wind');
-        const visibilityElement = document.getElementById('visibility');
-        const airQualityElement = document.getElementById('air-quality');
-        const pressureElement = document.getElementById('pressure');
-        const precipitationElement = document.getElementById('precipitation');
-        const uvIndexElement = document.getElementById('uv-index');
-        const comfortIndexElement = document.getElementById('comfort-index');
-        const cloudrateElement = document.getElementById('cloudrate');
-        const hourlyForecastElement = document.getElementById('hourly-forecast');
-        const dailyForecastElement = document.getElementById('daily-forecast');
+    <div class="card">
+        <div class="title">实时天气</div>
+        <div class="weather-main">
+            <div>
+                <div id="temp" class="weather-temp">--°C</div>
+                <div id="desc">--</div>
+            </div>
+            <div id="icon" style="font-size:48px;">☀️</div>
+        </div>
+    </div>
 
-        // API 地址
-        const apiUrl = 'https://api.caiyunapp.com/v2.6/0nRahTS8MYHrujeP/101.6656,39.2072/weather?dailysteps=3&hourlysteps=48';
+    <div class="card">
+        <div class="title">未来48小时</div>
+        <div class="forecast" id="hourly"></div>
+    </div>
 
-        // 获取当前时间
-        function updateCurrentTime() {
-            const now = new Date();
-            currentTimeElement.textContent = now.toLocaleString('zh-CN', {
-                year: 'numeric',
-                month: 'long',
-                day: 'numeric',
-                hour: '2-digit',
-                minute: '2-digit',
-                second: '2-digit'
-            });
+    <div class="card">
+        <div class="title">未来3天</div>
+        <div class="forecast" id="daily"></div>
+    </div>
+</div>
+
+<script>
+const API_KEY = "0nRahTS8MYHrujeP";
+// 高德地图地理编码API密钥
+const GAODE_API_KEY = "bd5388dfef81ab0f12b81ff9d179b61b";
+
+// 背景动画
+let canvas = document.getElementById("weatherCanvas");
+let ctx = canvas.getContext("2d");
+canvas.width = window.innerWidth;
+canvas.height = window.innerHeight;
+let particles = [];
+
+function setBackgroundEffect(skycon) {
+    particles = [];
+    if (skycon.includes("RAIN")) createRain();
+    else if (skycon.includes("SNOW")) createSnow();
+    else particles = []; // 晴天无特效
+}
+
+function createRain() {
+    for (let i = 0; i < 150; i++) {
+        particles.push({
+            x: Math.random() * canvas.width,
+            y: Math.random() * canvas.height,
+            len: Math.random() * 20 + 10,
+            speed: Math.random() * 4 + 4
+        });
+    }
+}
+
+function createSnow() {
+    for (let i = 0; i < 100; i++) {
+        particles.push({
+            x: Math.random() * canvas.width,
+            y: Math.random() * canvas.height,
+            r: Math.random() * 4 + 1,
+            speed: Math.random() * 1 + 0.5
+        });
+    }
+}
+
+function animate() {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.fillStyle = "rgba(255,255,255,0.8)";
+    particles.forEach(p => {
+        if (p.len) { // rain
+            ctx.beginPath();
+            ctx.strokeStyle = "rgba(174,194,224,0.8)";
+            ctx.moveTo(p.x, p.y);
+            ctx.lineTo(p.x, p.y + p.len);
+            ctx.stroke();
+            p.y += p.speed;
+            if (p.y > canvas.height) p.y = -p.len;
+        } else { // snow
+            ctx.beginPath();
+            ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
+            ctx.fill();
+            p.y += p.speed;
+            if (p.y > canvas.height) p.y = -p.r;
         }
+    });
+    requestAnimationFrame(animate);
+}
+animate();
 
-        // 更新背景图片 based on 天气状况
-        function updateBackground(skycon) {
-            let backgroundImage;
-            switch (skycon) {
-                case 'CLEAR_DAY':
-                    backgroundImage = "url('https://images.unsplash.com/photo-1501785888041-af3ef285b470?ixlib=rb-4.0.3&auto=format&fit=crop&w=1950&q=80')";
-                    break;
-                case 'CLEAR_NIGHT':
-                    backgroundImage = "url('https://images.unsplash.com/photo-1451187580459-43490279c0fa?ixlib=rb-4.0.3&auto=format&fit=crop&w=1950&q=80')";
-                    break;
-                case 'PARTLY_CLOUDY_DAY':
-                case 'PARTLY_CLOUDY_NIGHT':
-                case 'CLOUDY':
-                    backgroundImage = "url('https://images.unsplash.com/photo-1535498730771-e735b998cd64?ixlib=rb-4.0.3&auto=format&fit=crop&w=1950&q=80')";
-                    break;
-                case 'RAIN':
-                case 'SHOWER_RAIN':
-                case 'THUNDER_SHOWER':
-                    backgroundImage = "url('https://images.unsplash.com/photo-1503376780353-7e6692767b70?ixlib=rb-4.0.3&auto=format&fit=crop&w=1950&q=80')";
-                    break;
-                case 'SNOW':
-                case 'LIGHT_SNOW':
-                case 'HEAVY_SNOW':
-                    backgroundImage = "url('https://images.unsplash.com/photo-1513639725744-4092f21062fa?ixlib=rb-4.0.3&auto=format&fit=crop&w=1950&q=80')";
-                    break;
-                case 'FOG':
-                case 'LIGHT_HAZE':
-                case 'HAZE':
-                case 'HEAVY_HAZE':
-                    backgroundImage = "url('https://images.unsplash.com/photo-1530521954074-e64f6810b32d?ixlib=rb-4.0.3&auto=format&fit=crop&w=1950&q=80')";
-                    break;
-                default:
-                    backgroundImage = "url('https://images.unsplash.com/photo-1501785888041-af3ef285b470?ixlib=rb-4.0.3&auto=format&fit=crop&w=1950&q=80')";
-            }
-            document.body.style.backgroundImage = backgroundImage;
-        }
+function setBackgroundColor(skycon) {
+    const weatherMap = {
+        "CLEAR_DAY": "linear-gradient(to bottom, #4facfe, #00f2fe)",
+        "CLEAR_NIGHT": "linear-gradient(to bottom, #141E30, #243B55)",
+        "PARTLY_CLOUDY_DAY": "linear-gradient(to bottom, #d7d2cc, #304352)",
+        "PARTLY_CLOUDY_NIGHT": "linear-gradient(to bottom, #232526, #414345)",
+        "CLOUDY": "linear-gradient(to bottom, #757f9a, #d7dde8)",
+        "RAIN": "linear-gradient(to bottom, #00c6fb, #005bea)",
+        "SNOW": "linear-gradient(to bottom, #e0eafc, #cfdef3)"
+    };
+    document.body.style.background = weatherMap[skycon] || "linear-gradient(to bottom, #a0cfff, #ffffff)";
+}
 
-        // 获取天气图标
-        function getWeatherIcon(skycon) {
-            let iconClass, iconColor;
-            switch (skycon) {
-                case 'CLEAR_DAY':
-                    iconClass = 'fa-sun-o';
-                    iconColor = 'text-yellow-500';
-                    break;
-                case 'CLEAR_NIGHT':
-                    iconClass = 'fa-moon-o';
-                    iconColor = 'text-blue-300';
-                    break;
-                case 'PARTLY_CLOUDY_DAY':
-                case 'PARTLY_CLOUDY_NIGHT':
-                    iconClass = 'fa-cloud';
-                    iconColor = 'text-gray-400';
-                    break;
-                case 'CLOUDY':
-                    iconClass = 'fa-cloud';
-                    iconColor = 'text-gray-500';
-                    break;
-                case 'RAIN':
-                case 'SHOWER_RAIN':
-                case 'THUNDER_SHOWER':
-                    iconClass = 'fa-tint';
-                    iconColor = 'text-blue-500';
-                    break;
-                case 'SNOW':
-                case 'LIGHT_SNOW':
-                case 'HEAVY_SNOW':
-                    iconClass = 'fa-snowflake-o';
-                    iconColor = 'text-blue-200';
-                    break;
-                case 'FOG':
-                case 'LIGHT_HAZE':
-                case 'HAZE':
-                case 'HEAVY_HAZE':
-                    iconClass = 'fa-eye-slash';
-                    iconColor = 'text-gray-400';
-                    break;
-                default:
-                    iconClass = 'fa-question';
-                    iconColor = 'text-gray-500';
-            }
-            return { iconClass, iconColor };
-        }
+function fetchWeather(lat, lon) {
+    const url = `https://api.caiyunapp.com/v2.6/${API_KEY}/${lon},${lat}/weather.jsonp?callback=MYCALLBACK`;
+    const script = document.createElement('script');
+    script.src = url;
+    document.body.appendChild(script);
+}
 
-        // 格式化天气描述
-        function formatWeatherDesc(skycon) {
-            const descMap = {
-                'CLEAR_DAY': '晴天',
-                'CLEAR_NIGHT': '晴朗的夜晚',
-                'PARTLY_CLOUDY_DAY': '多云',
-                'PARTLY_CLOUDY_NIGHT': '多云的夜晚',
-                'CLOUDY': '阴天',
-                'RAIN': '雨',
-                'SHOWER_RAIN': '阵雨',
-                'THUNDER_SHOWER': '雷阵雨',
-                'SNOW': '雪',
-                'LIGHT_SNOW': '小雪',
-                'HEAVY_SNOW': '大雪',
-                'FOG': '雾',
-                'LIGHT_HAZE': '轻度雾霾',
-                'HAZE': '雾霾',
-                'HEAVY_HAZE': '严重雾霾'
-            };
-            return descMap[skycon] || skycon;
-        }
+function MYCALLBACK(data) {
+    if (!data || !data.result) return;
+    const realtime = data.result.realtime;
+    const hourly = data.result.hourly;
+    const daily = data.result.daily;
 
-        // 渲染小时预报
-        function renderHourlyForecast(hourlyData) {
-            hourlyForecastElement.innerHTML = '';
-            // 只显示接下来的12小时
-            const next12Hours = hourlyData.slice(0, 12);
+    document.getElementById("temp").textContent = `${realtime.temperature}°C`;
+    document.getElementById("desc").textContent = realtime.skycon;
+    document.getElementById("icon").textContent = skyconEmoji(realtime.skycon);
 
-            next12Hours.forEach(item => {
-                const time = new Date(item.datetime);
-                const hour = time.getHours();
-                const { iconClass, iconColor } = getWeatherIcon(item.skycon);
-                const temp = item.temperature.value.toFixed(1);
-                const precipitation = item.precipitation.probability ? item.precipitation.probability + '%' : '0%';
+    setBackgroundColor(realtime.skycon);
+    setBackgroundEffect(realtime.skycon);
 
-                const hourlyCard = document.createElement('div');
-                hourlyCard.className = 'hourly-card bg-white/80 rounded-xl p-4 shadow-md text-center w-24 flex flex-col items-center';
-                hourlyCard.innerHTML = `
-                    <p class="text-gray-600 font-medium">${hour}:00</p>
-                    <i class="fa ${iconClass} ${iconColor} text-2xl my-2"></i>
-                    <p class="text-gray-800 font-bold">${temp}°C</p>
-                    <p class="text-blue-500 text-sm mt-1">降水: ${precipitation}</p>
-                `;
-                hourlyForecastElement.appendChild(hourlyCard);
-            });
-        }
+    // 未来48小时
+    const hourlyDiv = document.getElementById("hourly");
+    hourly.temperature.forEach((t, i) => {
+        const time = new Date(hourly.temperature[i].datetime).getHours();
+        const div = document.createElement("div");
+        div.className = "forecast-item";
+        div.innerHTML = `<div>${time}时</div><div>${t.value}°C</div>`;
+        hourlyDiv.appendChild(div);
+    });
 
-        // 渲染每日预报
-        function renderDailyForecast(dailyData) {
-            dailyForecastElement.innerHTML = '';
+    // 未来3天
+    const dailyDiv = document.getElementById("daily");
+    daily.temperature.forEach((t, i) => {
+        const date = new Date(daily.temperature[i].date).toLocaleDateString();
+        const div = document.createElement("div");
+        div.className = "forecast-item";
+        div.innerHTML = `<div>${date}</div><div>${t.max} / ${t.min}°C</div>`;
+        dailyDiv.appendChild(div);
+    });
+}
 
-            dailyData.forEach(item => {
-                const date = new Date(item.date);
-                const weekday = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'][date.getDay()];
-                const month = date.getMonth() + 1;
-                const day = date.getDate();
-                const { iconClass, iconColor } = getWeatherIcon(item.skycon_day);
-                const tempMin = item.temperature_min.value.toFixed(1);
-                const tempMax = item.temperature_max.value.toFixed(1);
-                const precipitation = item.precipitation.probability ? item.precipitation.probability + '%' : '0%';
+function skyconEmoji(skycon) {
+    const map = {
+        "CLEAR_DAY": "☀️",
+        "CLEAR_NIGHT": "🌙",
+        "PARTLY_CLOUDY_DAY": "⛅",
+        "PARTLY_CLOUDY_NIGHT": "☁️",
+        "CLOUDY": "☁️",
+        "RAIN": "🌧️",
+        "SNOW": "❄️"
+    };
+    return map[skycon] || "☀️";
+}
 
-                const dailyCard = document.createElement('div');
-                dailyCard.className = 'weather-card bg-white/80 rounded-xl p-4 shadow-md flex flex-col items-center';
-                dailyCard.innerHTML = `
-                    <p class="text-gray-600 font-medium">${month}/${day} ${weekday}</p>
-                    <i class="fa ${iconClass} ${iconColor} text-3xl my-3"></i>
-                    <p class="text-gray-800 font-semibold">${tempMin}°C ~ ${tempMax}°C</p>
-                    <p class="text-blue-500 text-sm mt-2">降水: ${precipitation}</p>
-                    <p class="text-gray-700 text-sm mt-1">${formatWeatherDesc(item.skycon_day)}</p>
-                `;
-                dailyForecastElement.appendChild(dailyCard);
-            });
-        }
+// 根据城市名称获取经纬度
+function getLocationByCity(cityName) {
+    if (!cityName || cityName.trim() === '') {
+        document.getElementById("city-error").textContent = "请输入有效的城市名称";
+        document.getElementById("city-error").style.display = "block";
+        return;
+    }
 
-        // 处理天气数据
-        function processWeatherData(data) {
-            if (!data || !data.result) {
-                alert('获取天气数据失败');
-                return;
-            }
+    document.getElementById("city-error").style.display = "none";
+    document.getElementById("location").textContent = `正在获取${cityName}的位置信息...`;
 
-            const realtime = data.result.realtime;
-            const hourly = data.result.hourly;
-            const daily = data.result.daily;
+    const url = `https://restapi.amap.com/v3/geocode/geo?key=${GAODE_API_KEY}&address=${encodeURIComponent(cityName)}`;
 
-            // 更新位置
-            locationElement.textContent = '经度: 101.6656, 纬度: 39.2072';
-
-            // 更新当前时间
-            updateCurrentTime();
-            setInterval(updateCurrentTime, 1000);
-
-            // 更新实时天气
-            temperatureElement.textContent = realtime.temperature.toFixed(1);
-            const skycon = realtime.skycon;
-            const { iconClass, iconColor } = getWeatherIcon(skycon);
-            weatherIconElement.className = `fa ${iconClass} ${iconColor} text-5xl mr-4`;
-            weatherDescElement.textContent = formatWeatherDesc(skycon);
-            apparentTempElement.textContent = `体感温度: ${realtime.apparent_temperature.toFixed(1)}°C`;
-            humidityElement.textContent = `${(realtime.humidity * 100).toFixed(0)}%`;
-            windElement.textContent = `${realtime.wind.direction.toFixed(0)}° ${realtime.wind.speed.toFixed(1)} m/s`;
-            visibilityElement.textContent = `${realtime.visibility.toFixed(1)} km`;
-            airQualityElement.textContent = `AQI: ${realtime.air_quality.aqi.chn} (${realtime.air_quality.description.chn})`;
-            pressureElement.textContent = `${(realtime.pressure / 100).toFixed(1)} hPa`;
-            precipitationElement.textContent = `${realtime.precipitation.local.intensity.toFixed(1)} mm (概率: ${hourly.precipitation[0].probability}%)`;
-            uvIndexElement.textContent = `${realtime.life_index.ultraviolet.index.toFixed(1)} (${realtime.life_index.ultraviolet.desc})`;
-            comfortIndexElement.textContent = `${realtime.life_index.comfort.index} (${realtime.life_index.comfort.desc})`;
-            cloudrateElement.textContent = `${(realtime.cloudrate * 100).toFixed(0)}%`;
-
-            // 更新背景
-            updateBackground(skycon);
-
-            // 渲染预报
-            renderHourlyForecast(hourly.temperature.map((temp, index) => ({
-                datetime: hourly.temperature[index].datetime,
-                temperature: temp,
-                precipitation: hourly.precipitation[index],
-                skycon: hourly.skycon[index].value
-            })));
-
-            renderDailyForecast(daily.temperature.map((temp, index) => ({
-                date: daily.temperature[index].date,
-                temperature_min: temp.min,
-                temperature_max: temp.max,
-                precipitation: daily.precipitation[index],
-                skycon_day: daily.skycon[index].value_day,
-                skycon_night: daily.skycon[index].value_night
-            })));
-
-            // 显示天气容器，隐藏加载
-            loadingElement.classList.add('hidden');
-            weatherContainer.classList.remove('hidden');
-        }
-
-        // 获取天气数据
-        function fetchWeatherData() {
-            fetch(apiUrl)
-                .then(response => {
-                    if (!response.ok) {
-                        throw new Error('网络响应错误');
-                    }
-                    return response.json();
-                })
-                .then(data => {
-                    processWeatherData(data);
-                })
-                .catch(error => {
-                    console.error('获取天气数据失败:', error);
-                    alert('获取天气数据失败，请稍后重试');
-                    loadingElement.classList.add('hidden');
-                    locationElement.textContent = '获取天气数据失败';
-                });
-        }
-
-        // 尝试获取地理位置，如果失败则直接使用提供的坐标
-        function getUserLocation() {
-            if (navigator.geolocation) {
-                navigator.geolocation.getCurrentPosition(
-                    (position) => {
-                        const latitude = position.coords.latitude;
-                        const longitude = position.coords.longitude;
-                        locationElement.textContent = `经度: ${longitude.toFixed(4)}, 纬度: ${latitude.toFixed(4)}`;
-                        // 这里可以使用用户的实际坐标请求天气数据
-                        fetchWeatherData();
-                    },
-                    (error) => {
-                        console.error('获取地理位置失败:', error);
-                        let errorMessage = '获取地理位置失败，使用默认位置数据';
-                        
-                        // 根据错误类型提供更具体的信息
-                        switch (error.code) {
-                            case error.PERMISSION_DENIED:
-                                errorMessage = '您拒绝了位置权限请求，使用默认位置数据';
-                                break;
-                            case error.POSITION_UNAVAILABLE:
-                                errorMessage = '位置信息不可用，使用默认位置数据';
-                                break;
-                            case error.TIMEOUT:
-                                errorMessage = '获取位置信息超时，使用默认位置数据';
-                                break;
-                            case error.UNKNOWN_ERROR:
-                                errorMessage = '发生未知错误，使用默认位置数据';
-                                break;
-                        }
-                        
-                        // 显示错误信息给用户
-                        locationElement.textContent = errorMessage;
-                        
-                        // 使用默认坐标
-                        fetchWeatherData();
-                    },
-                    {
-                        timeout: 10000, // 设置10秒超时
-                        enableHighAccuracy: true
-                    }
-                );
+    fetch(url)
+        .then(response => response.json())
+        .then(data => {
+            if (data.status === '1' && data.geocodes.length > 0) {
+                const location = data.geocodes[0].location;
+                const [lon, lat] = location.split(',');
+                document.getElementById("location").textContent = `城市: ${cityName}, 纬度: ${lat}, 经度: ${lon}`;
+                fetchWeather(lat, lon);
             } else {
-                // 浏览器不支持地理定位
-                locationElement.textContent = '您的浏览器不支持地理定位，使用默认位置数据';
-                fetchWeatherData();
+                document.getElementById("city-error").textContent = `未找到${cityName}的位置信息，请尝试其他城市`;
+                document.getElementById("city-error").style.display = "block";
+                document.getElementById("location").textContent = "定位失败";
             }
-        }
+        })
+        .catch(error => {
+            console.error('地理编码API请求失败:', error);
+            document.getElementById("city-error").textContent = "获取位置信息失败，请重试";
+            document.getElementById("city-error").style.display = "block";
+            document.getElementById("location").textContent = "定位失败";
+        });
+}
 
-        // 初始化
-        getUserLocation();
-    </script>
+// 初始化城市查询按钮事件
+document.getElementById("search-city").addEventListener('click', () => {
+    const cityName = document.getElementById("city-input").value;
+    getLocationByCity(cityName);
+});
+
+// 按下回车键查询城市
+document.getElementById("city-input").addEventListener('keypress', (e) => {
+    if (e.key === 'Enter') {
+        const cityName = document.getElementById("city-input").value;
+        getLocationByCity(cityName);
+    }
+});
+
+// 获取位置
+function getUserLocation() {
+    if (!navigator.geolocation) {
+        document.getElementById("location").textContent = "您的浏览器不支持地理位置服务，请输入城市名称查询";
+        return;
+    }
+
+    navigator.geolocation.getCurrentPosition(
+        pos => {
+            const lat = pos.coords.latitude.toFixed(4);
+            const lon = pos.coords.longitude.toFixed(4);
+            document.getElementById("location").textContent = `当前位置: 纬度: ${lat}, 经度: ${lon}`;
+            fetchWeather(lat, lon);
+        },
+        err => {
+            let errorMsg = "定位失败，请输入城市名称查询";
+            switch(err.code) {
+                case err.PERMISSION_DENIED:
+                    errorMsg = "您拒绝了定位请求，请允许位置权限或输入城市名称查询";
+                    break;
+                case err.POSITION_UNAVAILABLE:
+                    errorMsg = "位置信息不可用，请检查设备定位服务或输入城市名称查询";
+                    break;
+                case err.TIMEOUT:
+                    errorMsg = "定位超时，请重试或输入城市名称查询";
+                    break;
+                case err.UNKNOWN_ERROR:
+                    errorMsg = "未知错误导致定位失败，请输入城市名称查询";
+                    break;
+            }
+            document.getElementById("location").textContent = errorMsg;
+            // 删除旧的经纬度输入框
+            const oldInputContainer = document.getElementById("location-input-container");
+            if (oldInputContainer) {
+                oldInputContainer.remove();
+            }
+        },
+        {
+            enableHighAccuracy: true,
+            timeout: 5000,
+            maximumAge: 0
+        }
+    );
+}
+
+// 初始化调用
+getUserLocation();
+</script>
 </body>
 </html>
