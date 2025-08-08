@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>动态天气</title>
+<title>动态彩云天气</title>
 <style>
     html, body {
         margin: 0;
@@ -194,7 +194,7 @@ function MYCALLBACK(data) {
     const daily = data.result.daily;
 
     document.getElementById("temp").textContent = `${realtime.temperature}°C`;
-    document.getElementById("desc").textContent = realtime.skycon;
+    document.getElementById("desc").textContent = skyconToChinese(realtime.skycon); // 修改为中文显示
     document.getElementById("icon").textContent = skyconEmoji(realtime.skycon);
 
     setBackgroundColor(realtime.skycon);
@@ -202,21 +202,25 @@ function MYCALLBACK(data) {
 
     // 未来48小时
     const hourlyDiv = document.getElementById("hourly");
+    hourlyDiv.innerHTML = ''; // 清空容器
     hourly.temperature.forEach((t, i) => {
         const time = new Date(hourly.temperature[i].datetime).getHours();
+        const skycon = hourly.skycon[i].value;
         const div = document.createElement("div");
         div.className = "forecast-item";
-        div.innerHTML = `<div>${time}时</div><div>${t.value}°C</div>`;
+        div.innerHTML = `<div>${time}时</div><div>${skyconEmoji(skycon)}</div><div>${t.value}°C</div><div>${skyconToChinese(skycon)}</div>`;
         hourlyDiv.appendChild(div);
     });
 
     // 未来3天
     const dailyDiv = document.getElementById("daily");
+    dailyDiv.innerHTML = ''; // 清空容器
     daily.temperature.forEach((t, i) => {
         const date = new Date(daily.temperature[i].date).toLocaleDateString();
+        const skycon = daily.skycon[i].value;
         const div = document.createElement("div");
         div.className = "forecast-item";
-        div.innerHTML = `<div>${date}</div><div>${t.max} / ${t.min}°C</div>`;
+        div.innerHTML = `<div>${date}</div><div>${skyconEmoji(skycon)}</div><div>${t.max} / ${t.min}°C</div><div>${skyconToChinese(skycon)}</div>`;
         dailyDiv.appendChild(div);
     });
 }
@@ -232,6 +236,20 @@ function skyconEmoji(skycon) {
         "SNOW": "❄️"
     };
     return map[skycon] || "☀️";
+}
+
+// 添加天气状态英文转中文的函数
+function skyconToChinese(skycon) {
+    const map = {
+        "CLEAR_DAY": "晴天",
+        "CLEAR_NIGHT": "晴天(夜间)",
+        "PARTLY_CLOUDY_DAY": "多云",
+        "PARTLY_CLOUDY_NIGHT": "多云(夜间)",
+        "CLOUDY": "阴天",
+        "RAIN": "小雨",
+        "SNOW": "雪"
+    };
+    return map[skycon] || "未知";
 }
 
 // 根据城市名称获取经纬度
