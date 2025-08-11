@@ -1,9 +1,9 @@
 <!DOCTYPE html>
 <html lang="zh-CN">
 <head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<title>动态彩云天气（按搜索/定位城市实时背景）</title>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>动态彩云天气（已修复定位）</title>
 <style>
   html,body{margin:0;padding:0;height:100%;font-family:"Segoe UI",sans-serif;color:#333;overflow-x:hidden}
   body{position:relative;transition:background 0.6s ease}
@@ -57,75 +57,67 @@
 </div>
 
 <script>
-/* ====== 配置（保持你原有的 key） ====== */
-const API_KEY = "0nRahTS8MYHrujeP"; // 彩云天气 API key（jsonp）
-const GAODE_API_KEY = "bd5388dfef81ab0f12b81ff9d179b61b"; // 高德 key
+/* ====== 保留你原来的 API keys ====== */
+const API_KEY = "0nRahTS8MYHrujeP"; // 彩云天气（JSONP）
+const GAODE_API_KEY = "bd5388dfef81ab0f12b81ff9d179b61b"; // 高德地图
 
 /* ====== 画布与状态 ====== */
 const canvas = document.getElementById('weatherCanvas');
 const ctx = canvas.getContext('2d');
-let particles = [];               // 所有粒子
-let _lightningInterval = null;    // 闪电定时器
-let _lightningFlash = 0;          // 闪电闪的帧数计数
-let _lastWeatherScriptId = null;  // 用于清理 jsonp script
-let _currentWeatherCity = '';     // 当前请求对应的城市名（用于显示与判断）
+let particles = [];
+let _lightningInterval = null;
+let _lightningFlash = 0;
+let _lastWeatherScriptId = null;
+let _currentWeatherCity = ''; // 当前请求的城市名（用于特效判断）
 resizeCanvas();
-
 window.addEventListener('resize', resizeCanvas);
-function resizeCanvas(){
-  canvas.width = window.innerWidth;
-  canvas.height = window.innerHeight;
-}
+function resizeCanvas(){ canvas.width = window.innerWidth; canvas.height = window.innerHeight; }
 
-/* ====== 动画 helpers ====== */
+/* ====== 清理/特效工厂 ====== */
 function clearEffects(){
   particles = [];
   if (_lightningInterval) { clearInterval(_lightningInterval); _lightningInterval = null; }
   _lightningFlash = 0;
 }
-
-/* 各类粒子生成器（雨、雪、光斑、云等） */
-function createRain(count=150){
+function createRain(count=160){
   for(let i=0;i<count;i++){
-    particles.push({type:'rain', x:Math.random()*canvas.width, y:Math.random()*canvas.height, len:Math.random()*20+12, speed:Math.random()*4+6, alpha: Math.random()*0.4+0.4});
+    particles.push({type:'rain', x:Math.random()*canvas.width, y:Math.random()*canvas.height, len:Math.random()*20+12, speed:Math.random()*4+6, alpha: Math.random()*0.5+0.35});
   }
 }
-function createSnow(count=100){
+function createSnow(count=120){
   for(let i=0;i<count;i++){
     particles.push({type:'snow', x:Math.random()*canvas.width, y:Math.random()*canvas.height, r:Math.random()*3+1, speed:Math.random()*0.6+0.3});
   }
 }
-function createSnowGlow(count=24){
+function createSnowGlow(count=28){
   for(let i=0;i<count;i++){
     particles.push({type:'snowglow', x:Math.random()*canvas.width, y:Math.random()*canvas.height, r:Math.random()*4+3, speed:Math.random()*0.4+0.1});
   }
 }
-function createFloatingLights(count=50){
+function createFloatingLights(count=60){
   for(let i=0;i<count;i++){
     particles.push({type:'light', x:Math.random()*canvas.width, y:Math.random()*canvas.height, r:Math.random()*1.8+0.8, speed:Math.random()*0.4+0.1, alpha: Math.random()*0.6+0.3});
   }
 }
 function createClouds(count=8){
   for(let i=0;i<count;i++){
-    particles.push({type:'cloud', x:Math.random()*canvas.width, y:Math.random()*canvas.height*0.6, r:Math.random()*80+60, speed:(Math.random()*0.3+0.05), alpha: Math.random()*0.25+0.15});
+    particles.push({type:'cloud', x:Math.random()*canvas.width, y:Math.random()*canvas.height*0.6, r:Math.random()*80+60, speed:(Math.random()*0.3+0.03), alpha: Math.random()*0.25+0.12});
   }
 }
-
-/* 闪电：不直接绘制矩形闪，而是触发短时的全屏白光（更可控） */
 function createLightning(){
   if (_lightningInterval) clearInterval(_lightningInterval);
+  // 随机间隔触发短时闪光（使用 _lightningFlash 控制帧数）
   _lightningInterval = setInterval(()=>{
-    // 随机化间隔
-    _lightningFlash = Math.floor(3 + Math.random()*5); // 闪几帧
-  }, 2500 + Math.random()*3500);
+    // 30% 概率触发闪电，这样不会太频繁
+    if (Math.random() < 0.35) _lightningFlash = Math.floor(2 + Math.random()*5);
+  }, 2200 + Math.random()*3000);
 }
 
-/* 根据 skycon 和城市决定效果（cityName 可用于特效加强） */
+/* ====== 根据 skycon 与城市设置效果 ====== */
 function setBackgroundEffect(skycon = "", cityName = ""){
   clearEffects();
   skycon = (skycon || "").toUpperCase();
   cityName = cityName || "";
-  // 一般特效
   if(skycon.includes("RAIN")){
     createRain(160);
     createClouds(6);
@@ -136,23 +128,20 @@ function setBackgroundEffect(skycon = "", cityName = ""){
     createClouds(5);
   } else if(skycon.includes("CLEAR")){
     createFloatingLights(60);
-    // 晴天也做轻微云层以增加层次
     createClouds(4);
   } else if(skycon.includes("CLOUD")){
     createClouds(10);
   } else {
-    // 默认轻微云
     createClouds(6);
   }
-  // 城市特殊加强（如果你想北京有更强效果，可在此判断）
+  // 北京增强效果（可按需调整）
   if(/北京/.test(cityName)){
-    // 北京：在晴天添加更多光斑；雨天增加云层密度
     if(skycon.includes("CLEAR")) createFloatingLights(40);
     if(skycon.includes("RAIN")) createClouds(10);
   }
 }
 
-/* 背景颜色（梯度） */
+/* ====== 背景颜色 ====== */
 function setBackgroundColor(skycon = ""){
   const map = {
     "CLEAR_DAY":"linear-gradient(to bottom,#4facfe,#00f2fe)",
@@ -166,13 +155,13 @@ function setBackgroundColor(skycon = ""){
   document.body.style.background = map[skycon] || "linear-gradient(to bottom,#a0cfff,#ffffff)";
 }
 
-/* 动画主循环：依据粒子类型绘制 */
+/* ====== 渲染循环 ====== */
 function animate(){
   ctx.clearRect(0,0,canvas.width,canvas.height);
 
-  // 闪电闪烁覆盖层（优先）
+  // 闪电覆盖层
   if(_lightningFlash > 0){
-    ctx.fillStyle = `rgba(255,255,255,${0.14 + Math.random()*0.26})`;
+    ctx.fillStyle = `rgba(255,255,255,${0.12 + Math.random()*0.3})`;
     ctx.fillRect(0,0,canvas.width,canvas.height);
     _lightningFlash--;
   }
@@ -187,10 +176,7 @@ function animate(){
       ctx.stroke();
       p.y += p.speed;
       p.x += Math.sin(p.y/20)*0.6;
-      if(p.y > canvas.height + p.len) {
-        p.y = -p.len;
-        p.x = Math.random()*canvas.width;
-      }
+      if(p.y > canvas.height + p.len) { p.y = -p.len; p.x = Math.random()*canvas.width; }
     } else if(p.type === 'snow'){
       ctx.beginPath();
       ctx.fillStyle = "rgba(255,255,255,0.9)";
@@ -222,10 +208,7 @@ function animate(){
       ctx.save();
       ctx.globalAlpha = p.alpha;
       ctx.beginPath();
-      // 画一个椭圆状的云
-      const rx = p.r * 1.6;
-      const ry = p.r;
-      ctx.ellipse(p.x, p.y, rx, ry, 0, 0, Math.PI*2);
+      ctx.ellipse(p.x, p.y, p.r*1.6, p.r, 0, 0, Math.PI*2);
       ctx.fillStyle = 'rgba(255,255,255,0.85)';
       ctx.fill();
       ctx.restore();
@@ -238,70 +221,60 @@ function animate(){
 }
 animate();
 
-/* ====== JSONP 请求与回调管理 ====== */
-/* 使用全局 _currentWeatherCity 来标记当前请求的城市名，以便 MYCALLBACK 能知道是哪次请求 */
+/* ====== JSONP: 请求与回调管理 ====== */
 function fetchWeather(lat, lon, cityName = ""){
-  // lat, lon: numbers or strings (lat = latitude, lon = longitude)
-  // 清理上一次 jsonp script
+  // 清理上一次 jsonp script（避免堆积）
   if(_lastWeatherScriptId){
     const old = document.getElementById(_lastWeatherScriptId);
     if(old) old.remove();
     _lastWeatherScriptId = null;
   }
-  _currentWeatherCity = cityName || "";
+  _currentWeatherCity = cityName || '';
   const id = 'caiyun-jsonp-' + Date.now();
   _lastWeatherScriptId = id;
   const script = document.createElement('script');
   script.id = id;
-  // 彩云 JSONP 接口要求经度,纬度（lon,lat）
   script.src = `https://api.caiyunapp.com/v2.6/${API_KEY}/${lon},${lat}/weather.jsonp?callback=MYCALLBACK`;
   script.onerror = () => {
-    console.error('加载天气 JSONP 失败');
     document.getElementById('city-error').textContent = '天气数据加载失败';
     document.getElementById('city-error').style.display = 'block';
   };
   document.body.appendChild(script);
 }
 
-/* 全局回调（彩云 JSONP 会调用） */
+/* 全局回调（彩云 JSONP 会调用 MYCALLBACK） */
 function MYCALLBACK(data){
-  // 删除上次 jsonp script（防止堆积）
+  // 清理 jsonp script（已加载）
   if(_lastWeatherScriptId){
     const s = document.getElementById(_lastWeatherScriptId);
     if(s) s.remove();
     _lastWeatherScriptId = null;
   }
+  document.getElementById('city-error').style.display = 'none';
 
   if(!data || !data.result){
-    console.warn('天气返回异常', data);
     document.getElementById('city-error').textContent = '天气数据异常';
     document.getElementById('city-error').style.display = 'block';
     return;
   }
 
-  // 解析
   const realtime = data.result.realtime || {};
   const hourly = data.result.hourly || {};
   const daily = data.result.daily || {};
 
-  // 显示基础实时天气
-  const tempEl = document.getElementById('temp');
-  const descEl = document.getElementById('desc');
-  const iconEl = document.getElementById('icon');
-  tempEl.textContent = (realtime.temperature !== undefined) ? `${realtime.temperature}°C` : '--°C';
+  document.getElementById('temp').textContent = (realtime.temperature !== undefined) ? `${realtime.temperature}°C` : '--°C';
   const skycon = (realtime.skycon || '').toUpperCase();
-  descEl.textContent = skyconToChinese(skycon);
-  iconEl.textContent = skyconEmoji(skycon);
+  document.getElementById('desc').textContent = skyconToChinese(skycon);
+  document.getElementById('icon').textContent = skyconEmoji(skycon);
 
-  // 背景颜色与特效（使用 _currentWeatherCity 来决定是否需要城市级的特殊处理）
+  // 背景颜色与特效，基于当前请求的城市名（_currentWeatherCity）
   setBackgroundColor(skycon);
   setBackgroundEffect(skycon, _currentWeatherCity);
 
-  // 填充小时与日预报（容错）
+  // 填充小时预报
   const hourlyDiv = document.getElementById('hourly');
   hourlyDiv.innerHTML = '';
   if(hourly.temperature && hourly.temperature.length){
-    // 确保按长度循环，避免索引越界
     const len = Math.min(hourly.temperature.length, (hourly.skycon && hourly.skycon.length) ? hourly.skycon.length : hourly.temperature.length);
     for(let i=0;i<len;i++){
       const tObj = hourly.temperature[i];
@@ -317,6 +290,7 @@ function MYCALLBACK(data){
     hourlyDiv.innerHTML = '<div class="forecast-item">无小时数据</div>';
   }
 
+  // 填充日预报
   const dailyDiv = document.getElementById('daily');
   dailyDiv.innerHTML = '';
   if(daily.temperature && daily.temperature.length){
@@ -337,28 +311,19 @@ function MYCALLBACK(data){
   }
 }
 
-/* ====== skycon 辅助函数 ====== */
+/* ====== skycon 辅助 ====== */
 function skyconEmoji(skycon){
   if(!skycon) return '—';
-  const map = {
-    'CLEAR_DAY':'☀️','CLEAR_NIGHT':'🌙',
-    'PARTLY_CLOUDY_DAY':'⛅','PARTLY_CLOUDY_NIGHT':'☁️',
-    'CLOUDY':'☁️','RAIN':'🌧️','SNOW':'❄️','HAZE':'🌫️','LIGHT_RAIN':'🌦️'
-  };
+  const map = {'CLEAR_DAY':'☀️','CLEAR_NIGHT':'🌙','PARTLY_CLOUDY_DAY':'⛅','PARTLY_CLOUDY_NIGHT':'☁️','CLOUDY':'☁️','RAIN':'🌧️','SNOW':'❄️','HAZE':'🌫️','LIGHT_RAIN':'🌦️'};
   return map[skycon] || '☀️';
 }
 function skyconToChinese(skycon){
   if(!skycon) return '未知';
-  const map = {
-    'CLEAR_DAY':'晴天','CLEAR_NIGHT':'晴(夜)',
-    'PARTLY_CLOUDY_DAY':'多云','PARTLY_CLOUDY_NIGHT':'多云(夜)',
-    'CLOUDY':'阴天','RAIN':'降雨','SNOW':'降雪','HAZE':'雾霾'
-  };
+  const map = {'CLEAR_DAY':'晴天','CLEAR_NIGHT':'晴(夜)','PARTLY_CLOUDY_DAY':'多云','PARTLY_CLOUDY_NIGHT':'多云(夜)','CLOUDY':'阴天','RAIN':'降雨','SNOW':'降雪','HAZE':'雾霾'};
   return map[skycon] || skycon;
 }
 
-/* ====== 城市名 <-> 坐标（高德） ====== */
-/* 通过城市名获取经纬度（高德地理编码），并调用 fetchWeather */
+/* ====== 城市/经纬互转（高德） ====== */
 function getLocationByCity(cityName){
   cityName = (cityName || '').trim();
   if(!cityName){
@@ -371,11 +336,10 @@ function getLocationByCity(cityName){
   const url = `https://restapi.amap.com/v3/geocode/geo?key=${GAODE_API_KEY}&address=${encodeURIComponent(cityName)}`;
   fetch(url).then(r=>r.json()).then(data=>{
     if(data && data.status === '1' && data.geocodes && data.geocodes.length>0){
-      // geocodes[0].location => "lng,lat"
       const loc = data.geocodes[0].location || '';
       const [lng,lat] = loc.split(',');
       document.getElementById('location').textContent = `城市: ${cityName}`;
-      // 确保按 (lat, lon) 传入
+      // fetchWeather 参数 (lat, lon) 传入后内部会构造 lon,lat 给彩云
       fetchWeather(lat, lng, cityName);
     } else {
       document.getElementById('city-error').textContent = `未找到 ${cityName} 的位置信息`;
@@ -390,7 +354,7 @@ function getLocationByCity(cityName){
   });
 }
 
-/* 通过经纬度反向解析城市名（用于定位成功时显示城市名） */
+/* 反向地理编码：将经纬度转为城市名（用于显示） */
 function reverseGeocodeAndFetch(lat, lon){
   const url = `https://restapi.amap.com/v3/geocode/regeo?key=${GAODE_API_KEY}&location=${lon},${lat}`;
   fetch(url).then(r=>r.json()).then(data=>{
@@ -398,45 +362,73 @@ function reverseGeocodeAndFetch(lat, lon){
     try{
       const comp = data.regeocode && data.regeocode.addressComponent;
       if(comp){
-        // comp.city 可能为空串或数组/字符串
         city = comp.city || comp.province || '';
-        // city 可能是 [] (空数组), 也可能是 ''，若为数组取第一个
         if(Array.isArray(city)) city = city[0] || '';
-        // 有时 comp.city 返回 "" 而 comp.province 有省名，尝试使用区/镇补充
         if(!city && comp.township) city = comp.township;
       }
     }catch(e){ city = ''; }
     if(city) document.getElementById('location').textContent = `城市: ${city}`;
     else document.getElementById('location').textContent = '当前位置';
+    // 即便反向解析失败，也传入空 cityName 以确保天气能加载并驱动背景
     fetchWeather(lat, lon, city);
   }).catch(err=>{
     console.warn('反向地理编码失败', err);
     document.getElementById('location').textContent = '当前位置';
-    fetchWeather(lat, lon);
+    fetchWeather(lat, lon, '');
   });
 }
 
-/* ====== 定位逻辑 ====== */
+/* ====== 定位逻辑（精准修复） ====== */
+/*
+ - 首先尝试高精度定位（enableHighAccuracy: true）。
+ - 如果返回 POSITION_UNAVAILABLE（code=2），会再尝试一次低精度定位（enableHighAccuracy: false）进行降级重试。
+ - 所有错误都会被友好处理并降级到北京（调用 getLocationByCity("北京")）。
+ - 不再在控制台输出冗长的错误对象（只输出简短提示），同时向用户显示友好提示。
+*/
 function getUserLocation(){
   if(!navigator.geolocation){
-    document.getElementById('location').textContent = '无法获取位置，显示北京天气';
+    document.getElementById('location').textContent = '浏览器不支持定位，显示北京天气';
     getLocationByCity('北京');
     return;
   }
-  navigator.geolocation.getCurrentPosition(pos=>{
-    // 不在页面显示经纬度（按需求：隐藏经纬度，显示城市名）
-    const lat = pos.coords.latitude.toFixed(6);
-    const lon = pos.coords.longitude.toFixed(6);
-    // 用高德反向地理编码获取城市名并 fetchWeather（背景会根据返回的天气动态变化）
-    reverseGeocodeAndFetch(lat, lon);
-  }, err=>{
-    console.warn('定位失败或被拒绝：', err);
-    document.getElementById('location').textContent = '定位失败，显示北京天气';
-    getLocationByCity('北京');
-  }, {enableHighAccuracy:true, timeout:5000, maximumAge:0});
+
+  // 内部递归尝试函数：useHighAccuracy=true 首次尝试
+  function attempt(useHighAccuracy){
+    const options = { enableHighAccuracy: !!useHighAccuracy, timeout: useHighAccuracy ? 5000 : 8000, maximumAge: 0 };
+    navigator.geolocation.getCurrentPosition(pos => {
+      // 成功：隐藏错误信息，反向解析并获取天气
+      document.getElementById('city-error').style.display = 'none';
+      const lat = pos.coords.latitude.toFixed(6);
+      const lon = pos.coords.longitude.toFixed(6);
+      // 不在页面显示经纬度（按你的要求），而是转城市名
+      reverseGeocodeAndFetch(lat, lon);
+    }, err => {
+      // 只记录必要信息，不打印整个对象
+      const code = err && err.code ? err.code : -1;
+      // 若高精度不可用，且这是第一次（useHighAccuracy==true），则尝试低精度重试一次
+      if(code === 2 && useHighAccuracy){
+        // 低精度重试一次
+        console.warn('高精度不可用，尝试低精度定位重试...');
+        attempt(false);
+        return;
+      }
+      // 处理错误并降级到北京
+      let friendly = '定位失败';
+      if(code === 1) friendly = '您拒绝了定位请求';
+      else if(code === 2) friendly = '位置信息不可用';
+      else if(code === 3) friendly = '定位超时';
+      document.getElementById('location').textContent = `${friendly}，已切换为北京天气`;
+      document.getElementById('city-error').textContent = friendly;
+      document.getElementById('city-error').style.display = 'block';
+      // 降级到北京（不会显示经纬度）
+      getLocationByCity('北京');
+    }, options);
+  }
+
+  attempt(true);
 }
 
-/* 按钮 / 回车事件 */
+/* ====== 事件绑定 ====== */
 document.getElementById('search-city').addEventListener('click', ()=>{
   getLocationByCity(document.getElementById('city-input').value);
 });
@@ -444,7 +436,7 @@ document.getElementById('city-input').addEventListener('keypress',(e)=>{
   if(e.key === 'Enter') getLocationByCity(document.getElementById('city-input').value);
 });
 
-/* 启动定位 -> 天气加载 */
+/* 启动：尝试获取定位 -> 否则降级北京 */
 getUserLocation();
 </script>
 </body>
