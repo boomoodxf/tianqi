@@ -24,7 +24,10 @@
 <div class="container">
   <div class="card" id="location-card">
     <div class="title">当前位置</div>
-    <div id="location">正在获取定位...</div>
+    <div id="location-display" style="display: flex; justify-content: space-between; align-items: center;">
+      <div id="location">正在根据IP获取定位...</div>
+      <div id="datetime" style="font-size:0.9em;color:#666;"></div>
+    </div>
     <div style="margin-top:15px;">
       <div style="display:flex;gap:10px;align-items:center;">
         <input id="city-input" type="text" placeholder="请输入城市名称" style="padding:8px;flex:1;border:1px solid #ddd;border-radius:5px">
@@ -294,7 +297,8 @@ function MYCALLBACK(data){
   const dailyDiv = document.getElementById('daily');
   dailyDiv.innerHTML = '';
   if(daily.temperature && daily.temperature.length){
-    const len = Math.min(daily.temperature.length, (daily.skycon && daily.skycon.length) ? daily.skycon.length : daily.temperature.length);
+    // 只显示前 7 天的数据
+    const len = Math.min(daily.temperature.length, 3);
     for(let i=0;i<len;i++){
       const tObj = daily.temperature[i];
       const dateStr = tObj && tObj.date ? new Date(tObj.date).toLocaleDateString() : ('第' + (i+1) + '天');
@@ -337,10 +341,9 @@ function getLocationByCity(cityName){
   fetch(url).then(r=>r.json()).then(data=>{
     if(data && data.status === '1' && data.geocodes && data.geocodes.length>0){
       const loc = data.geocodes[0].location || '';
-      const [lng,lat] = loc.split(',');
+      const [lon,lat] = loc.split(','); // 高德是lon,lat顺序
       document.getElementById('location').textContent = `城市: ${cityName}`;
-      // fetchWeather 参数 (lat, lon) 传入后内部会构造 lon,lat 给彩云
-      fetchWeather(lat, lng, cityName);
+      fetchWeather(lat, lon, cityName);
     } else {
       document.getElementById('city-error').textContent = `未找到 ${cityName} 的位置信息`;
       document.getElementById('city-error').style.display = 'block';
@@ -354,78 +357,42 @@ function getLocationByCity(cityName){
   });
 }
 
-/* 反向地理编码：将经纬度转为城市名（用于显示） */
-function reverseGeocodeAndFetch(lat, lon){
-  const url = `https://restapi.amap.com/v3/geocode/regeo?key=${GAODE_API_KEY}&location=${lon},${lat}`;
-  fetch(url).then(r=>r.json()).then(data=>{
-    let city = '';
-    try{
-      const comp = data.regeocode && data.regeocode.addressComponent;
-      if(comp){
-        city = comp.city || comp.province || '';
-        if(Array.isArray(city)) city = city[0] || '';
-        if(!city && comp.township) city = comp.township;
-      }
-    }catch(e){ city = ''; }
-    if(city) document.getElementById('location').textContent = `城市: ${city}`;
-    else document.getElementById('location').textContent = '当前位置';
-    // 即便反向解析失败，也传入空 cityName 以确保天气能加载并驱动背景
-    fetchWeather(lat, lon, city);
-  }).catch(err=>{
-    console.warn('反向地理编码失败', err);
-    document.getElementById('location').textContent = '当前位置';
-    fetchWeather(lat, lon, '');
+
+/* ====== 核心改动：新的 IP 定位函数 ====== */
+function getLocationByIp(){
+  document.getElementById('location').textContent = '正在取定位...';
+  // 采用一个免费的IP定位服务
+  fetch('https://api.ip.sb/geoip').then(r => r.json()).then(data => {
+    if(data && data.latitude !== undefined && data.longitude !== undefined){
+      const lat = data.latitude;
+      const lon = data.longitude;
+      const city = data.city || data.region || '未知城市';
+      document.getElementById('location').textContent = `城市: ${city}`;
+      fetchWeather(lat, lon, city);
+    } else {
+      throw new Error('IP定位数据异常');
+    }
+  }).catch(err => {
+    console.warn('IP定位失败，尝试降级到北京...', err);
+    document.getElementById('location').textContent = 'IP定位失败，已切换为北京天气';
+    document.getElementById('city-error').textContent = 'IP定位失败';
+    document.getElementById('city-error').style.display = 'block';
+    // 降级到北京
+    getLocationByCity('北京');
   });
 }
 
-/* ====== 定位逻辑（精准修复） ====== */
-/*
- - 首先尝试高精度定位（enableHighAccuracy: true）。
- - 如果返回 POSITION_UNAVAILABLE（code=2），会再尝试一次低精度定位（enableHighAccuracy: false）进行降级重试。
- - 所有错误都会被友好处理并降级到北京（调用 getLocationByCity("北京")）。
- - 不再在控制台输出冗长的错误对象（只输出简短提示），同时向用户显示友好提示。
-*/
-function getUserLocation(){
-  if(!navigator.geolocation){
-    document.getElementById('location').textContent = '浏览器不支持定位，显示北京天气';
-    getLocationByCity('北京');
-    return;
-  }
-
-  // 内部递归尝试函数：useHighAccuracy=true 首次尝试
-  function attempt(useHighAccuracy){
-    const options = { enableHighAccuracy: !!useHighAccuracy, timeout: useHighAccuracy ? 5000 : 8000, maximumAge: 0 };
-    navigator.geolocation.getCurrentPosition(pos => {
-      // 成功：隐藏错误信息，反向解析并获取天气
-      document.getElementById('city-error').style.display = 'none';
-      const lat = pos.coords.latitude.toFixed(6);
-      const lon = pos.coords.longitude.toFixed(6);
-      // 不在页面显示经纬度（按你的要求），而是转城市名
-      reverseGeocodeAndFetch(lat, lon);
-    }, err => {
-      // 只记录必要信息，不打印整个对象
-      const code = err && err.code ? err.code : -1;
-      // 若高精度不可用，且这是第一次（useHighAccuracy==true），则尝试低精度重试一次
-      if(code === 2 && useHighAccuracy){
-        // 低精度重试一次
-        console.warn('高精度不可用，尝试低精度定位重试...');
-        attempt(false);
-        return;
-      }
-      // 处理错误并降级到北京
-      let friendly = '定位失败';
-      if(code === 1) friendly = '您拒绝了定位请求';
-      else if(code === 2) friendly = '位置信息不可用';
-      else if(code === 3) friendly = '定位超时';
-      document.getElementById('location').textContent = `${friendly}，已切换为北京天气`;
-      document.getElementById('city-error').textContent = friendly;
-      document.getElementById('city-error').style.display = 'block';
-      // 降级到北京（不会显示经纬度）
-      getLocationByCity('北京');
-    }, options);
-  }
-
-  attempt(true);
+/* ====== 新增：时间更新函数 ====== */
+function updateDateTime() {
+    const now = new Date();
+    const year = now.getFullYear();
+    const month = (now.getMonth() + 1).toString().padStart(2, '0');
+    const day = now.getDate().toString().padStart(2, '0');
+    const hours = now.getHours().toString().padStart(2, '0');
+    const minutes = now.getMinutes().toString().padStart(2, '0');
+    const seconds = now.getSeconds().toString().padStart(2, '0');
+    const dateTimeStr = `${year}年${month}月${day}日 ${hours}:${minutes}:${seconds}`;
+    document.getElementById('datetime').textContent = dateTimeStr;
 }
 
 /* ====== 事件绑定 ====== */
@@ -437,7 +404,11 @@ document.getElementById('city-input').addEventListener('keypress',(e)=>{
 });
 
 /* 启动：尝试获取定位 -> 否则降级北京 */
-getUserLocation();
+// 直接调用新的IP定位函数
+getLocationByIp();
+// 启动时间更新
+updateDateTime();
+setInterval(updateDateTime, 1000);
 </script>
 </body>
 </html>
